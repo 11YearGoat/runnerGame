@@ -2,18 +2,275 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Run Adi Run!</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css" />
-  <script defer src="script.js"></script>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-512.png" type="image/png" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: black;
+      color: white;
+      font-family: monospace;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      background: #000;
+      margin: 0 auto;
+      image-rendering: pixelated;
+      border: 3px solid white;
+      max-width: 100vw;
+      max-height: 80vh;
+    }
+    #controls {
+      position: fixed;
+      bottom: 10px;
+      width: 100%;
+      display: flex;
+      justify-content: space-around;
+      z-index: 10;
+    }
+    button {
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 10px;
+      width: 40vw;
+      height: 60px;
+      font-size: 2.5rem;
+      font-weight: bold;
+      user-select: none;
+      opacity: 0.8;
+    }
+    button:active {
+      background: #ccc;
+    }
+    #scoreboard {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.8rem;
+      letter-spacing: 0.1rem;
+      z-index: 9;
+    }
+    #deathScreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.9);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 2rem;
+      z-index: 20;
+      display: none;
+    }
+    #deathScreen button {
+      margin-top: 20px;
+      width: 50vw;
+      height: 50px;
+      font-size: 1.5rem;
+    }
+  </style>
 </head>
 <body>
-  <div id="game">
-    <div id="player"></div>
-    <div id="score">Score: 0</div>
-    <div id="highscore">High Score: 0</div>
+  <div id="scoreboard">Score: 0 | Highscore: 0</div>
+  <canvas id="game" width="288" height="512"></canvas>
+
+  <div id="controls">
+    <button id="leftBtn">◀ LEFT</button>
+    <button id="rightBtn">RIGHT ▶</button>
   </div>
-  <button id="startBtn">Start</button>
+
+  <div id="deathScreen">
+    <div id="finalScore">Game Over!</div>
+    <button id="retryBtn">Retry</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreboard = document.getElementById('scoreboard');
+    const deathScreen = document.getElementById('deathScreen');
+    const finalScore = document.getElementById('finalScore');
+    const retryBtn = document.getElementById('retryBtn');
+
+    const player = {
+      x: canvas.width / 2 - 16,
+      y: canvas.height - 80,
+      width: 32,
+      height: 32,
+      speed: 4,
+      dx: 0,
+    };
+
+    const coin = {
+      x: Math.random() * (canvas.width - 20) + 10,
+      y: -20,
+      size: 16,
+      speed: 3,
+    };
+
+    const obstacle = {
+      x: Math.random() * (canvas.width - 40) + 20,
+      y: -50,
+      width: 40,
+      height: 20,
+      speed: 3.5,
+    };
+
+    let score = 0;
+    let highscore = localStorage.getItem('highscore') || 0;
+    let isGameOver = false;
+
+    function drawPlayer() {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    function drawCoin() {
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(coin.x, coin.y, coin.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawObstacle() {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    }
+
+    function movePlayer() {
+      player.x += player.dx;
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.width > canvas.width)
+        player.x = canvas.width - player.width;
+    }
+
+    function updateCoin() {
+      coin.y += coin.speed;
+      if (coin.y > canvas.height) resetCoin();
+    }
+
+    function updateObstacle() {
+      obstacle.y += obstacle.speed;
+      if (obstacle.y > canvas.height) resetObstacle();
+    }
+
+    function resetCoin() {
+      coin.x = Math.random() * (canvas.width - 20) + 10;
+      coin.y = -20;
+    }
+
+    function resetObstacle() {
+      obstacle.x = Math.random() * (canvas.width - 40) + 20;
+      obstacle.y = -50;
+    }
+
+    function detectCollision() {
+      const distX = Math.abs(coin.x - (player.x + player.width / 2));
+      const distY = Math.abs(coin.y - (player.y + player.height / 2));
+      if (distX <= player.width / 2 + coin.size / 2 &&
+          distY <= player.height / 2 + coin.size / 2) {
+        score++;
+        updateScore();
+        resetCoin();
+      }
+
+      if (
+        player.x < obstacle.x + obstacle.width &&
+        player.x + player.width > obstacle.x &&
+        player.y < obstacle.y + obstacle.height &&
+        player.y + player.height > obstacle.y
+      ) {
+        gameOver();
+      }
+    }
+
+    function updateScore() {
+      if (score > highscore) {
+        highscore = score;
+        localStorage.setItem('highscore', highscore);
+      }
+      scoreboard.textContent = `Score: ${score} | Highscore: ${highscore}`;
+    }
+
+    function gameOver() {
+      isGameOver = true;
+      deathScreen.style.display = 'flex';
+      finalScore.textContent = `Game Over! Score: ${score}`;
+    }
+
+    function clear() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function loop() {
+      if (isGameOver) return;
+      clear();
+      movePlayer();
+      updateCoin();
+      updateObstacle();
+      detectCollision();
+      drawCoin();
+      drawObstacle();
+      drawPlayer();
+      requestAnimationFrame(loop);
+    }
+
+    function resetGame() {
+      isGameOver = false;
+      deathScreen.style.display = 'none';
+      score = 0;
+      updateScore();
+      resetCoin();
+      resetObstacle();
+      player.x = canvas.width / 2 - player.width / 2;
+      loop();
+    }
+
+    retryBtn.onclick = resetGame;
+
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+
+    leftBtn.addEventListener('touchstart', e => {
+      e.preventDefault(); player.dx = -player.speed;
+    });
+    leftBtn.addEventListener('touchend', e => {
+      e.preventDefault(); player.dx = 0;
+    });
+
+    rightBtn.addEventListener('touchstart', e => {
+      e.preventDefault(); player.dx = player.speed;
+    });
+    rightBtn.addEventListener('touchend', e => {
+      e.preventDefault(); player.dx = 0;
+    });
+
+    leftBtn.addEventListener('mousedown', e => {
+      e.preventDefault(); player.dx = -player.speed;
+    });
+    leftBtn.addEventListener('mouseup', e => {
+      e.preventDefault(); player.dx = 0;
+    });
+
+    rightBtn.addEventListener('mousedown', e => {
+      e.preventDefault(); player.dx = player.speed;
+    });
+    rightBtn.addEventListener('mouseup', e => {
+      e.preventDefault(); player.dx = 0;
+    });
+
+    loop();
+  </script>
 </body>
 </html>
